@@ -5,7 +5,7 @@
   "printerPort": 9100,
   "localIp": "192.168.2.20",
   "databaseURL": "https://wandertag-dev-default-rtdb.firebaseio.com",
-  "serviceAccountPath": "/path/to/service-account.json",
+  "serviceAccountPath": "/mnt/d/Dev/WanderTagFirebase/.codex/wandertag-printer.json",
   "firmwareVersion": 1,
   "ignoreHs": false
 }

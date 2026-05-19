@@ -42,6 +42,7 @@ const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT
 const twilioApiKeySid = defineSecret("TWILIO_API_KEY_SID");
 const twilioApiKeySecret = defineSecret("TWILIO_API_KEY_SECRET");
 const twilioVerifyServiceSid = defineSecret("TWILIO_VERIFY_SERVICE_SID");
+const printerRegisterBearer = "7c1a2c3d-1a8c-4b0b-8d12-6d8d3f8e4c19";
 
 admin.initializeApp({
   projectId,
@@ -80,6 +81,14 @@ function getHeader(req: Request, name: string): string | undefined {
   if (value) return value;
   const lower = req.headers[name.toLowerCase()];
   return Array.isArray(lower) ? lower[0] : lower;
+}
+
+function normalizePrinterUuid(uuid: string): string {
+  const value = uuid.trim().toLowerCase();
+  if (!/^[a-f0-9]{8}$/.test(value)) {
+    badRequest("uuid must be 8 hex characters");
+  }
+  return value;
 }
 
 function twilioAuthHeader(): string | null {
@@ -519,8 +528,13 @@ async function createScan(req: Request, res: Response): Promise<void> {
 }
 
 async function registerPrinter(req: Request, res: Response): Promise<void> {
+  const auth = getHeader(req, "authorization");
+  if (auth !== `Bearer ${printerRegisterBearer}`) {
+    forbidden("Invalid printer registration bearer");
+  }
+
   const body = req.body as PrinterRegisterBody;
-  const uuid = body.uuid?.trim();
+  const uuid = body.uuid ? normalizePrinterUuid(body.uuid) : "";
   if (!uuid) badRequest("uuid is required");
 
   const firmwareVersion = Number(body.firmwareVersion ?? 0);
@@ -655,6 +669,7 @@ async function enqueuePrintJob(tagId: string, tag: TagRecord): Promise<void> {
 
 export const api = onRequest({
   region: "us-central1",
+  invoker: "public",
   secrets: [twilioApiKeySid, twilioApiKeySecret, twilioVerifyServiceSid],
 }, app);
 

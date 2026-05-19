@@ -1,0 +1,11 @@
+{
+  "printerId": "vOxZocYvaM5U08cO8EcD",
+  "printerTransport": "sim",
+  "printerHost": "127.0.0.1",
+  "printerPort": 9100,
+  "localIp": "127.0.0.1",
+  "databaseURL": "https://wandertag-fb685-default-rtdb.firebaseio.com",
+  "databaseEmulatorHost": "127.0.0.1:9000",
+  "firmwareVersion": 1,
+  "ignoreHs": false
+}
