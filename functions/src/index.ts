@@ -6,6 +6,7 @@ import { HttpsError, onRequest } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onValueWritten } from "firebase-functions/v2/database";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret } from "firebase-functions/params";
 import {
   ageFromBirthYear,
   AuthRequestBody,
@@ -38,6 +39,9 @@ import {
 } from "./shared";
 
 const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? "wandertag-dev";
+const twilioApiKeySid = defineSecret("TWILIO_API_KEY_SID");
+const twilioApiKeySecret = defineSecret("TWILIO_API_KEY_SECRET");
+const twilioVerifyServiceSid = defineSecret("TWILIO_VERIFY_SERVICE_SID");
 
 admin.initializeApp({
   projectId,
@@ -79,8 +83,8 @@ function getHeader(req: Request, name: string): string | undefined {
 }
 
 function twilioAuthHeader(): string | null {
-  const apiKeySid = process.env.TWILIO_API_KEY_SID;
-  const apiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+  const apiKeySid = twilioApiKeySid.value() || process.env.TWILIO_API_KEY_SID;
+  const apiKeySecret = twilioApiKeySecret.value() || process.env.TWILIO_API_KEY_SECRET;
   if (apiKeySid && apiKeySecret) {
     return `Basic ${Buffer.from(`${apiKeySid}:${apiKeySecret}`).toString("base64")}`;
   }
@@ -456,11 +460,22 @@ async function createScan(req: Request, res: Response): Promise<void> {
   const tag = tagDoc.data() as TagRecord;
   if (tag.userId !== userId) forbidden("Tag ownership mismatch");
 
+  const [kidSnap, parentUserSnap] = await Promise.all([
+    firestore.collection("kids").doc(tag.kidId).get(),
+    firestore.collection("users").doc(tag.userId).get(),
+  ]);
+
+  if (!kidSnap.exists) notFound("Kid not found");
+  if (!parentUserSnap.exists) notFound("User not found");
+
+  const kid = kidSnap.data() as KidRecord;
+  const parentUser = parentUserSnap.data() as UserRecord;
+
   const scanRef = firestore.collection("scans").doc();
   const scan: ScanRecord = {
     tagId: tagDoc.id,
     publicCode,
-    userId,
+    userId: tag.userId,
     kidId: tag.kidId,
     location: body.location ?? null,
     locationId: body.locationId ?? null,
@@ -477,7 +492,12 @@ async function createScan(req: Request, res: Response): Promise<void> {
     updatedAt: FieldValue.serverTimestamp() as never,
   };
   await scanRef.set(scan);
-  res.json({ id: scanRef.id, ...scan });
+  res.json({
+    id: scanRef.id,
+    ...scan,
+    user: { id: parentUserSnap.id, ...parentUser },
+    kid: { id: kidSnap.id, ...kid },
+  });
 }
 
 async function registerPrinter(req: Request, res: Response): Promise<void> {
@@ -518,7 +538,7 @@ async function registerPrinter(req: Request, res: Response): Promise<void> {
 }
 
 async function twilioStartVerification(phone: string): Promise<{ sid: string | null; disabled: boolean }> {
-  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+  const serviceSid = twilioVerifyServiceSid.value() || process.env.TWILIO_VERIFY_SERVICE_SID;
   const authHeader = twilioAuthHeader();
   const disabled = process.env.TWILIO_VERIFY_DISABLED === "true" || !serviceSid || !authHeader;
 
@@ -548,7 +568,7 @@ async function twilioStartVerification(phone: string): Promise<{ sid: string | n
 }
 
 async function twilioVerifyCode(phone: string, code: string): Promise<{ ok: boolean; reason: string }> {
-  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+  const serviceSid = twilioVerifyServiceSid.value() || process.env.TWILIO_VERIFY_SERVICE_SID;
   const authHeader = twilioAuthHeader();
   const disabled = process.env.TWILIO_VERIFY_DISABLED === "true" || !serviceSid || !authHeader;
 
@@ -615,7 +635,10 @@ async function enqueuePrintJob(tagId: string, tag: TagRecord): Promise<void> {
   }, { merge: true });
 }
 
-export const api = onRequest({ region: "us-central1" }, app);
+export const api = onRequest({
+  region: "us-central1",
+  secrets: [twilioApiKeySid, twilioApiKeySecret, twilioVerifyServiceSid],
+}, app);
 
 app.post("/auth/start", (req, res) => {
   startAuth(req, res).catch((error) => {
