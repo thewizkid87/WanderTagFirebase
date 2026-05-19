@@ -1,0 +1,147 @@
+{
+  "endpoints": {
+    "api": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "region": [
+        "us-central1"
+      ],
+      "labels": {},
+      "httpsTrigger": {},
+      "entryPoint": "api"
+    },
+    "tagCreated": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "eventTrigger": {
+        "eventType": "google.cloud.firestore.document.v1.created",
+        "eventFilters": {
+          "database": "(default)",
+          "namespace": "(default)"
+        },
+        "eventFilterPathPatterns": {
+          "document": "tags/{tagId}"
+        },
+        "retry": false
+      },
+      "entryPoint": "tagCreated"
+    },
+    "queueUpdated": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "eventTrigger": {
+        "eventType": "google.firebase.database.ref.v1.written",
+        "eventFilters": {},
+        "eventFilterPathPatterns": {
+          "ref": "printerQueues/{printerId}/jobs/{jobId}",
+          "instance": "*"
+        },
+        "retry": false
+      },
+      "entryPoint": "queueUpdated"
+    },
+    "checkPrinterStatus": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "scheduleTrigger": {
+        "schedule": "every 5 minutes",
+        "retryConfig": {
+          "retryCount": null,
+          "maxDoublings": null,
+          "maxRetrySeconds": null,
+          "minBackoffSeconds": null,
+          "maxBackoffSeconds": null
+        },
+        "timeZone": null
+      },
+      "entryPoint": "checkPrinterStatus"
+    },
+    "cleanupSessions": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "scheduleTrigger": {
+        "schedule": "every 5 minutes",
+        "retryConfig": {
+          "retryCount": null,
+          "maxDoublings": null,
+          "maxRetrySeconds": null,
+          "minBackoffSeconds": null,
+          "maxBackoffSeconds": null
+        },
+        "timeZone": null
+      },
+      "entryPoint": "cleanupSessions"
+    },
+    "cleanupRuntimeJobs": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "scheduleTrigger": {
+        "schedule": "every 5 minutes",
+        "retryConfig": {
+          "retryCount": null,
+          "maxDoublings": null,
+          "maxRetrySeconds": null,
+          "minBackoffSeconds": null,
+          "maxBackoffSeconds": null
+        },
+        "timeZone": null
+      },
+      "entryPoint": "cleanupRuntimeJobs"
+    }
+  },
+  "specVersion": "v1alpha1",
+  "requiredAPIs": [
+    {
+      "api": "cloudscheduler.googleapis.com",
+      "reason": "Needed for scheduled functions."
+    }
+  ],
+  "extensions": {}
+}

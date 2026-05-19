@@ -1,0 +1,9 @@
+{
+  "name": "wandertagfirebase",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix functions run build",
+    "lint": "npm --prefix functions run lint",
+    "typecheck": "npm --prefix functions run typecheck"
+  }
+}

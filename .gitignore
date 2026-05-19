@@ -1,0 +1,28 @@
+# Codex local notes
+/.codex/
+
+# Node / build artifacts
+node_modules/
+functions/node_modules/
+functions/lib/
+**/dist/
+**/build/
+**/*.tsbuildinfo
+**/__pycache__/
+**/*.pyc
+
+# Firebase emulator state and logs
+.firebase/
+*debug.log
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+pubsub-debug.log
+.env.local
+functions/.env.local
+functions/.secret.local
+
+# IDE / OS noise
+.idea/
+.DS_Store
+Thumbs.db

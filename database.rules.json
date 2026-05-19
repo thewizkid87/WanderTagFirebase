@@ -1,0 +1,22 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "sessions": {
+      ".indexOn": ["tokenHash", "expiresAt", "status"]
+    },
+    "printerHealth": {
+      ".indexOn": ["lastSeenAt", "online"]
+    },
+    "printerQueues": {
+      "$printerId": {
+        "jobs": {
+          ".indexOn": ["createdAt", "status"]
+        }
+      }
+    },
+    "firmware": {
+      ".indexOn": ["updatedAt", "version"]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "wandertag-dev",
+    "dev": "wandertag-dev"
+  }
+}
