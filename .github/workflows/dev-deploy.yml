@@ -38,5 +38,5 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-sa.json" >> "$GITHUB_ENV"
 
       - name: Deploy to dev
-        run: npx firebase-tools@14.25.0 deploy --project wandertag-fb685 --only functions,firestore,database
+        run: npx firebase-tools@14.25.0 deploy --project wandertag-fb685 --only functions,firestore,database,hosting
         working-directory: .

@@ -2,7 +2,8 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import admin from "firebase-admin";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { HttpsError, onRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+import { HttpsError, onRequest as onRequestV2 } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onValueWritten } from "firebase-functions/v2/database";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -42,7 +43,7 @@ const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT
 const twilioApiKeySid = defineSecret("TWILIO_API_KEY_SID");
 const twilioApiKeySecret = defineSecret("TWILIO_API_KEY_SECRET");
 const twilioVerifyServiceSid = defineSecret("TWILIO_VERIFY_SERVICE_SID");
-const printerRegisterBearer = "7c1a2c3d-1a8c-4b0b-8d12-6d8d3f8e4c19";
+const printerRegisterToken = "7c1a2c3d-1a8c-4b0b-8d12-6d8d3f8e4c19";
 
 admin.initializeApp({
   projectId,
@@ -55,6 +56,10 @@ const rtdb = admin.database();
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "1mb" }));
+
+app.get("/health", (_req, res) => {
+  res.status(200).send("OK");
+});
 
 type AuthedRequest = Request & {
   session?: SessionSnapshot;
@@ -133,12 +138,8 @@ async function loadSessionByToken(token: string): Promise<SessionSnapshot | null
 }
 
 async function loadAuthedSession(req: Request): Promise<SessionSnapshot> {
-  const auth = getHeader(req, "authorization");
-  if (!auth?.startsWith("Bearer ")) {
-    forbidden("Missing bearer token");
-  }
-
-  const token = auth.slice("Bearer ".length).trim();
+  const token = getHeader(req, "x-auth-token")?.trim();
+  if (!token) forbidden("Missing x-auth-token");
   const session = await loadSessionByToken(token);
   if (!session) forbidden("Session not found");
 
@@ -528,14 +529,14 @@ async function createScan(req: Request, res: Response): Promise<void> {
 }
 
 async function registerPrinter(req: Request, res: Response): Promise<void> {
-  const auth = getHeader(req, "authorization");
-  if (auth !== `Bearer ${printerRegisterBearer}`) {
-    forbidden("Invalid printer registration bearer");
-  }
-
   const body = req.body as PrinterRegisterBody;
   const uuid = body.uuid ? normalizePrinterUuid(body.uuid) : "";
   if (!uuid) badRequest("uuid is required");
+
+  const authToken = getHeader(req, "x-auth-token")?.trim().toLowerCase();
+  if (!authToken || authToken !== printerRegisterToken) {
+    forbidden("Invalid printer auth token");
+  }
 
   const firmwareVersion = Number(body.firmwareVersion ?? 0);
   const apiKey = randomToken(16);
@@ -667,7 +668,11 @@ async function enqueuePrintJob(tagId: string, tag: TagRecord): Promise<void> {
   }, { merge: true });
 }
 
-export const api = onRequest({
+export const health = functions.https.onRequest((req, res) => {
+  res.status(200).send("OK");
+});
+
+export const api = onRequestV2({
   region: "us-central1",
   invoker: "public",
   secrets: [twilioApiKeySid, twilioApiKeySecret, twilioVerifyServiceSid],

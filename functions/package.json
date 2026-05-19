@@ -1,7 +1,7 @@
 {
   "name": "wandertag-firebase-functions",
   "private": true,
-  "main": "lib/index.js",
+  "main": "index.js",
   "engines": {
     "node": "20"
   },
