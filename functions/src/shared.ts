@@ -152,7 +152,7 @@ export interface PrinterRegisterBody {
 export interface TagCreateBody {
   userId?: string;
   kidIds?: string[];
-  printerId?: string;
+  printerUuid?: string;
 }
 
 export interface SessionSnapshot {

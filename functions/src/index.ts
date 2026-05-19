@@ -161,6 +161,11 @@ async function getPrinterByUuid(uuid: string): Promise<{ id: string; data: Print
   return { id: doc.id, data: doc.data() as PrinterRecord };
 }
 
+async function getPrintersByUuid(uuid: string): Promise<Array<{ id: string; data: PrinterRecord }>> {
+  const snap = await firestore.collection("printers").where("uuid", "==", uuid).limit(2).get();
+  return snap.docs.map((doc) => ({ id: doc.id, data: doc.data() as PrinterRecord }));
+}
+
 async function getActivePrinterForEvent(eventId: string): Promise<{ id: string; data: PrinterRecord } | null> {
   const snap = await firestore.collection("printers").where("eventId", "==", eventId).limit(1).get();
   if (snap.empty) return null;
@@ -396,13 +401,16 @@ async function createTag(req: Request, res: Response): Promise<void> {
   const body = req.body as TagCreateBody;
 
   const kidIds = Array.isArray(body.kidIds) ? body.kidIds.map((kidId) => String(kidId).trim()).filter(Boolean) : [];
-  if (!kidIds.length || !body.printerId) {
-    badRequest("kidIds and printerId are required");
+  const printerUuid = String(body.printerUuid ?? "").trim();
+  if (!kidIds.length || !printerUuid) {
+    badRequest("kidIds and printerUuid are required");
   }
 
-  const printerSnap = await firestore.collection("printers").doc(body.printerId).get();
-  if (!printerSnap.exists) notFound("Printer not found");
-  const printer = printerSnap.data() as PrinterRecord;
+  const printers = await getPrintersByUuid(printerUuid);
+  if (printers.length === 0) notFound("Printer not found");
+  if (printers.length > 1) forbidden("Printer uuid is not unique");
+  const printer = printers[0].data;
+  const printerId = printers[0].id;
 
   if (!printer.eventId) {
     forbidden("Printer event is not set");
@@ -428,7 +436,7 @@ async function createTag(req: Request, res: Response): Promise<void> {
     const tag: TagRecord = {
       userId,
       kidId,
-      printerId: body.printerId,
+      printerId,
       eventId: printer.eventId,
       sequenceId,
       publicCode,
