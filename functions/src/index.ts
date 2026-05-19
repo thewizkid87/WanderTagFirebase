@@ -395,46 +395,56 @@ async function createTag(req: Request, res: Response): Promise<void> {
   const { userId } = await requireAuthed(req);
   const body = req.body as TagCreateBody;
 
-  if (!body.kidId || !body.printerId || !body.eventId) {
-    badRequest("kidId, printerId, and eventId are required");
+  const kidIds = Array.isArray(body.kidIds) ? body.kidIds.map((kidId) => String(kidId).trim()).filter(Boolean) : [];
+  if (!kidIds.length || !body.printerId) {
+    badRequest("kidIds and printerId are required");
   }
-
-  const kidSnap = await firestore.collection("kids").doc(body.kidId).get();
-  if (!kidSnap.exists) notFound("Kid not found");
-  const kid = kidSnap.data() as KidRecord;
-  if (kid.userId !== userId) forbidden("Kid ownership mismatch");
-  if (kid.deleted) forbidden("Kid deleted");
-
-  const eventSnap = await firestore.collection("events").doc(body.eventId).get();
-  if (!eventSnap.exists) notFound("Event not found");
-  const event = eventSnap.data() as EventRecord;
-  if (event.status !== "ACTIVE") forbidden("Event not active");
 
   const printerSnap = await firestore.collection("printers").doc(body.printerId).get();
   if (!printerSnap.exists) notFound("Printer not found");
   const printer = printerSnap.data() as PrinterRecord;
 
-  const sequenceId = await nextSequenceId();
-  const tagId = firestore.collection("tags").doc().id;
-  const publicCode = toShortCode(sequenceId);
+  if (!printer.eventId) {
+    forbidden("Printer event is not set");
+  }
 
-  const tag: TagRecord = {
-    userId,
-    kidId: body.kidId,
-    printerId: body.printerId,
-    eventId: body.eventId,
-    sequenceId,
-    publicCode,
-    status: "CREATED",
-    printStatus: "Pending",
-    printedStatusTime: null,
-    printStatusReason: null,
-    createdAt: FieldValue.serverTimestamp() as never,
-    updatedAt: FieldValue.serverTimestamp() as never,
-  };
+  const eventSnap = await firestore.collection("events").doc(printer.eventId).get();
+  if (!eventSnap.exists) notFound("Event not found");
+  const event = eventSnap.data() as EventRecord;
+  if (event.status !== "ACTIVE") forbidden("Event not active");
 
-  await firestore.collection("tags").doc(tagId).set(tag);
-  res.json({ id: tagId, ...tag, printerUuid: printer.uuid });
+  const tags = [];
+  for (const kidId of kidIds) {
+    const kidSnap = await firestore.collection("kids").doc(kidId).get();
+    if (!kidSnap.exists) notFound(`Kid not found: ${kidId}`);
+    const kid = kidSnap.data() as KidRecord;
+    if (kid.userId !== userId) forbidden(`Kid ownership mismatch: ${kidId}`);
+    if (kid.deleted) forbidden(`Kid deleted: ${kidId}`);
+
+    const sequenceId = await nextSequenceId();
+    const tagId = firestore.collection("tags").doc().id;
+    const publicCode = toShortCode(sequenceId);
+
+    const tag: TagRecord = {
+      userId,
+      kidId,
+      printerId: body.printerId,
+      eventId: printer.eventId,
+      sequenceId,
+      publicCode,
+      status: "CREATED",
+      printStatus: "Pending",
+      printedStatusTime: null,
+      printStatusReason: null,
+      createdAt: FieldValue.serverTimestamp() as never,
+      updatedAt: FieldValue.serverTimestamp() as never,
+    };
+
+    await firestore.collection("tags").doc(tagId).set(tag);
+    tags.push({ id: tagId, ...tag, printerUuid: printer.uuid });
+  }
+
+  res.json({ tags });
 }
 
 async function getKidScans(req: Request, res: Response): Promise<void> {

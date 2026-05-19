@@ -151,9 +151,8 @@ export interface PrinterRegisterBody {
 
 export interface TagCreateBody {
   userId?: string;
-  kidId?: string;
+  kidIds?: string[];
   printerId?: string;
-  eventId?: string;
 }
 
 export interface SessionSnapshot {
@@ -215,4 +214,3 @@ export function ageFromBirthYear(birthYear?: number | null): string {
 export function compileTemplate(template: string, values: Record<string, string | null | undefined>): string {
   return template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*}}/g, (_, key: string) => values[key] ?? "");
 }
-
