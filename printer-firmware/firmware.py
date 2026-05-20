@@ -219,13 +219,6 @@ def heartbeat(printer_id: str, firmware_version: int, local_ip: str, current_job
     })
 
 
-def load_latest_firmware() -> Optional[Dict[str, Any]]:
-    snap = ref("firmware/latest").get()
-    if not snap:
-        return None
-    return snap
-
-
 def claim_next_job(printer_id: str) -> Optional[tuple[str, Dict[str, Any]]]:
     jobs = ref(f"printerQueues/{printer_id}/jobs").get()
     if not jobs:
@@ -276,31 +269,17 @@ def main() -> None:
 
     printer_id = cfg["printerId"]
     local_ip = cfg.get("localIp", "")
-    current_firmware_version = int(cfg.get("firmwareVersion") or 0)
-    current_firmware_checksum = None
     current_job_id: Optional[str] = None
     printer_status_raw: Optional[str] = transport.get_hs()
     last_heartbeat = 0
 
     while True:
         try:
-            latest = load_latest_firmware()
-            if latest:
-                latest_version = int(latest.get("version") or 0)
-                latest_checksum = latest.get("checksum")
-                latest_body = latest.get("body")
-                if latest_version > current_firmware_version or latest_checksum != current_firmware_checksum:
-                    logging.info("Firmware update available version=%s checksum=%s", latest_version, latest_checksum)
-                    current_firmware_version = latest_version
-                    current_firmware_checksum = latest_checksum
-                    if isinstance(latest_body, str) and latest_body.strip():
-                        cfg["firmwareBody"] = latest_body
-
             if printer_status_raw is None:
                 printer_status_raw = transport.get_hs()
 
             if int(time.time()) - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
-                heartbeat(printer_id, current_firmware_version, local_ip, current_job_id, printer_status_raw)
+                heartbeat(printer_id, int(cfg.get("firmwareVersion") or 0), local_ip, current_job_id, printer_status_raw)
                 last_heartbeat = int(time.time())
 
             claim = claim_next_job(printer_id)

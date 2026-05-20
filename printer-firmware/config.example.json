@@ -6,6 +6,8 @@
   "localIp": "192.168.2.20",
   "databaseURL": "https://wandertag-dev-default-rtdb.firebaseio.com",
   "serviceAccountPath": "/mnt/d/Dev/WanderTagFirebase/.codex/wandertag-printer.json",
-  "firmwareVersion": 1,
+  "firmwareVersion": "",
+  "prevFirmwareVersion": null,
+  "ignoredFirmwareVersions": [],
   "ignoreHs": false
 }

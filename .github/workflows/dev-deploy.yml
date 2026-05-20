@@ -40,3 +40,11 @@ jobs:
       - name: Deploy to dev
         run: npx firebase-tools@14.25.0 deploy --project wandertag-fb685 --only functions,firestore,database,hosting
         working-directory: .
+
+      - name: Publish printer firmware to RTDB
+        run: node scripts/publish-printer-firmware.js
+        working-directory: .
+        env:
+          FIREBASE_PROJECT_ID: wandertag-fb685
+          FIREBASE_DATABASE_URL: https://wandertag-fb685-default-rtdb.firebaseio.com
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
