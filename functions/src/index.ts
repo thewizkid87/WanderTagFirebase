@@ -44,6 +44,7 @@ const twilioApiKeySid = defineSecret("TWILIO_API_KEY_SID");
 const twilioApiKeySecret = defineSecret("TWILIO_API_KEY_SECRET");
 const twilioVerifyServiceSid = defineSecret("TWILIO_VERIFY_SERVICE_SID");
 const printerRegisterToken = "7c1a2c3d-1a8c-4b0b-8d12-6d8d3f8e4c19";
+const twilioRequestTimeoutMs = 10000;
 
 admin.initializeApp({
   projectId,
@@ -52,6 +53,7 @@ admin.initializeApp({
 
 const firestore = admin.firestore();
 const rtdb = admin.database();
+console.info("[startup] wandertag api module loaded");
 
 const app = express();
 app.use(cors({ origin: true }));
@@ -59,6 +61,29 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
   res.status(200).send("OK");
+});
+
+app.get("/rtdb-test", async (_req, res) => {
+  try {
+    const path = `debug/rtdbTest/${Date.now()}`;
+    console.info(`[rtdb-test] write ${path}`);
+    await rtdb.ref(path).set({
+      ok: true,
+      createdAt: nowMs(),
+    });
+    const snap = await rtdb.ref(path).get();
+    console.info(`[rtdb-test] read ${path} exists=${snap.exists()}`);
+    res.status(200).json({
+      path,
+      exists: snap.exists(),
+      value: snap.val(),
+    });
+  } catch (error) {
+    console.error("[rtdb-test] failed", error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 });
 
 type AuthedRequest = Request & {
@@ -110,6 +135,29 @@ function twilioAuthHeader(): string | null {
   }
 
   return null;
+}
+
+function logTwilioSecretState(scope: string): void {
+  const verifyServiceSid = twilioVerifyServiceSid.value() || process.env.TWILIO_VERIFY_SERVICE_SID;
+  const apiKeySid = twilioApiKeySid.value() || process.env.TWILIO_API_KEY_SID;
+  const apiKeySecret = twilioApiKeySecret.value() || process.env.TWILIO_API_KEY_SECRET;
+  const authHeader = twilioAuthHeader();
+  console.info(
+    `[twilio:${scope}] verifyServiceSid=${verifyServiceSid ? "present" : "missing"} ` +
+      `apiKeySid=${apiKeySid ? "present" : "missing"} ` +
+      `apiKeySecret=${apiKeySecret ? "present" : "missing"} ` +
+      `authHeader=${authHeader ? "present" : "missing"} ` +
+      `disabled=${process.env.TWILIO_VERIFY_DISABLED === "true"}`
+  );
+}
+
+function requireTwilioConfig(scope: string): { serviceSid: string; authHeader: string } {
+  const serviceSid = twilioVerifyServiceSid.value() || process.env.TWILIO_VERIFY_SERVICE_SID;
+  const authHeader = twilioAuthHeader();
+  logTwilioSecretState(scope);
+  if (!serviceSid) internal("TWILIO_VERIFY_SERVICE_SID is missing");
+  if (!authHeader) internal("Twilio auth header is missing");
+  return { serviceSid, authHeader };
 }
 
 async function nextSequenceId(): Promise<number> {
@@ -221,6 +269,7 @@ async function startAuth(req: Request, res: Response): Promise<void> {
   const userAgentHash = sha256(getHeader(req, "user-agent") ?? "");
 
   const sessionRef = rtdb.ref(`sessions/${sessionId}`);
+  console.info(`[auth:start] writing session ${sessionId}`);
   await sessionRef.set({
     phone,
     status: "INITIALIZING",
@@ -236,6 +285,7 @@ async function startAuth(req: Request, res: Response): Promise<void> {
     ipHash,
     userAgentHash,
   } satisfies SessionRecord);
+  console.info(`[auth:start] session written ${sessionId}`);
 
   const twilio = await twilioStartVerification(phone);
   await sessionRef.update({
@@ -474,11 +524,24 @@ async function getKidScans(req: Request, res: Response): Promise<void> {
   if (kid.userId !== userId) forbidden("Kid ownership mismatch");
 
   const scansSnap = await firestore.collection("scans").where("kidId", "==", kidId).orderBy("createdAt", "desc").limit(25).get();
-  res.json(scansSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  const scans = scansSnap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as ScanRecord) }));
+  const scannerUserIds = [...new Set(scans.map((scan) => scan.scannerUserId).filter((value): value is string => Boolean(value)))];
+  const scannerUsers = await Promise.all(
+    scannerUserIds.map(async (scannerUserId) => {
+      const snap = await firestore.collection("users").doc(scannerUserId).get();
+      return snap.exists ? { id: snap.id, ...snap.data() } : null;
+    })
+  );
+  const scannerUserById = new Map(scannerUsers.filter(Boolean).map((user) => [user!.id, user]));
+
+  res.json(scans.map((scan) => ({
+    ...scan,
+    scannerUser: scan.scannerUserId ? scannerUserById.get(scan.scannerUserId) ?? null : null,
+  })));
 }
 
 async function createScan(req: Request, res: Response): Promise<void> {
-  const { userId } = await requireAuthed(req);
+  const { userId: scannerUserId } = await requireAuthed(req);
   const publicCode = String(req.params.publicCode);
   const body = req.body as { lat?: number; lon?: number; location?: string; locationId?: string };
 
@@ -486,24 +549,27 @@ async function createScan(req: Request, res: Response): Promise<void> {
   if (tagSnap.empty) notFound("Tag not found");
   const tagDoc = tagSnap.docs[0];
   const tag = tagDoc.data() as TagRecord;
-  if (tag.userId !== userId) forbidden("Tag ownership mismatch");
 
-  const [kidSnap, parentUserSnap] = await Promise.all([
+  const [kidSnap, parentUserSnap, scannerUserSnap] = await Promise.all([
     firestore.collection("kids").doc(tag.kidId).get(),
     firestore.collection("users").doc(tag.userId).get(),
+    firestore.collection("users").doc(scannerUserId).get(),
   ]);
 
   if (!kidSnap.exists) notFound("Kid not found");
   if (!parentUserSnap.exists) notFound("User not found");
+  if (!scannerUserSnap.exists) notFound("Scanner user not found");
 
   const kid = kidSnap.data() as KidRecord;
   const parentUser = parentUserSnap.data() as UserRecord;
+  const scannerUser = scannerUserSnap.data() as UserRecord;
 
   const scanRef = firestore.collection("scans").doc();
   const scan: ScanRecord = {
     tagId: tagDoc.id,
     publicCode,
     userId: tag.userId,
+    scannerUserId,
     kidId: tag.kidId,
     location: body.location ?? null,
     locationId: body.locationId ?? null,
@@ -525,6 +591,7 @@ async function createScan(req: Request, res: Response): Promise<void> {
     ...scan,
     user: { id: parentUserSnap.id, ...parentUser },
     kid: { id: kidSnap.id, ...kid },
+    scannerUser: { id: scannerUserSnap.id, ...scannerUser },
   });
 }
 
@@ -571,25 +638,22 @@ async function registerPrinter(req: Request, res: Response): Promise<void> {
 }
 
 async function twilioStartVerification(phone: string): Promise<{ sid: string | null; disabled: boolean }> {
-  const serviceSid = twilioVerifyServiceSid.value() || process.env.TWILIO_VERIFY_SERVICE_SID;
-  const authHeader = twilioAuthHeader();
-  const disabled = process.env.TWILIO_VERIFY_DISABLED === "true" || !serviceSid || !authHeader;
+  const { serviceSid, authHeader } = requireTwilioConfig("start");
 
-  if (disabled) {
-    return { sid: "local-bypass", disabled: true };
-  }
-
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), twilioRequestTimeoutMs);
   const response = await fetch(`https://verify.twilio.com/v2/Services/${serviceSid}/Verifications`, {
     method: "POST",
     headers: {
       Authorization: authHeader as string,
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    signal: controller.signal,
     body: new URLSearchParams({
       To: phone,
       Channel: "sms",
     }),
-  });
+  }).finally(() => clearTimeout(timer));
 
   if (!response.ok) {
     const text = await response.text();
@@ -601,25 +665,22 @@ async function twilioStartVerification(phone: string): Promise<{ sid: string | n
 }
 
 async function twilioVerifyCode(phone: string, code: string): Promise<{ ok: boolean; reason: string }> {
-  const serviceSid = twilioVerifyServiceSid.value() || process.env.TWILIO_VERIFY_SERVICE_SID;
-  const authHeader = twilioAuthHeader();
-  const disabled = process.env.TWILIO_VERIFY_DISABLED === "true" || !serviceSid || !authHeader;
+  const { serviceSid, authHeader } = requireTwilioConfig("verify");
 
-  if (disabled) {
-    return { ok: code === "000000", reason: "local bypass requires code 000000" };
-  }
-
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), twilioRequestTimeoutMs);
   const response = await fetch(`https://verify.twilio.com/v2/Services/${serviceSid}/VerificationCheck`, {
     method: "POST",
     headers: {
       Authorization: authHeader as string,
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    signal: controller.signal,
     body: new URLSearchParams({
       To: phone,
       Code: code,
     }),
-  });
+  }).finally(() => clearTimeout(timer));
 
   if (!response.ok) {
     const text = await response.text();
@@ -784,6 +845,10 @@ export const checkPrinterStatus = onSchedule("every 5 minutes", async () => {
       updates.push(rtdb.ref(`printerHealth/${printerId}`).update({
         online: false,
       }));
+      updates.push(firestore.collection("printers").doc(printerId).set({
+        status: "OFFLINE",
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true }));
     }
   }
 

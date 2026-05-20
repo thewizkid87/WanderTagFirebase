@@ -75,6 +75,7 @@ export interface ScanRecord extends BaseRecord {
   tagId: string;
   publicCode: string;
   userId: string;
+  scannerUserId?: string | null;
   kidId: string;
   location?: string | null;
   locationId?: string | null;
