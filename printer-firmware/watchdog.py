@@ -91,10 +91,12 @@ def load_latest_firmware() -> Optional[Dict[str, Any]]:
 
 def write_firmware(body: str) -> bool:
     try:
+        logging.info("Installing firmware.py")
         with open(FIRMWARE_PATH + ".tmp", "w", encoding="utf-8") as f:
             f.write(body)
         os.replace(FIRMWARE_PATH + ".tmp", FIRMWARE_PATH)
         os.chmod(FIRMWARE_PATH, 0o755)
+        logging.info("Installed firmware.py")
         return True
     except Exception as exc:
         logging.error("Failed writing new firmware.py: %s", exc)
@@ -110,6 +112,7 @@ def backup_current_firmware() -> None:
 
 
 def rollback(cfg: Dict[str, Any], bad_version: int) -> None:
+    logging.warning("Rolling back firmware version=%s", bad_version)
     ignored: List[int] = list(cfg.get("ignoredFirmwareVersions") or [])
     if bad_version not in ignored:
         ignored.append(bad_version)
@@ -122,7 +125,7 @@ def rollback(cfg: Dict[str, Any], bad_version: int) -> None:
 
     prev_ver = cfg.get("prevFirmwareVersion")
     if prev_ver is not None:
-        cfg["firmwareVersion"] = int(prev_ver)
+        cfg["firmwareVersion"] = str(prev_ver)
     save_config(cfg)
 
     run_systemctl("restart", SERVICE_NAME)
@@ -134,13 +137,14 @@ def apply_update(cfg: Dict[str, Any]) -> bool:
     if not latest:
         return False
 
-    latest_version = int(latest.get("version") or 0)
+    latest_version = str(latest.get("version") or "")
     latest_checksum = latest.get("checksum")
     latest_body = latest.get("body")
     current_version = str(cfg.get("firmwareVersion") or "")
     ignored = set(str(v) for v in (cfg.get("ignoredFirmwareVersions") or []))
 
     if latest_version == current_version:
+        logging.info("Firmware up to date")
         return False
 
     if latest_version in ignored:
@@ -151,7 +155,8 @@ def apply_update(cfg: Dict[str, Any]) -> bool:
         logging.error("Latest firmware payload is empty; refusing to overwrite.")
         return False
 
-    logging.info("Firmware update available version=%s checksum=%s", latest_version, latest_checksum)
+    logging.info("Updating firmware to version %s", latest_version)
+    logging.info("Downloading firmware version=%s", latest_version)
     run_systemctl("stop", SERVICE_NAME)
     backup_current_firmware()
 

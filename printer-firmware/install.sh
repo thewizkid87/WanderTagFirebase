@@ -76,10 +76,20 @@ mkdir -p "${APP_DIR}"
 chown -R "${PI_USER}:${PI_USER}" "${APP_DIR}"
 
 echo "[4/8] Copying firmware files..."
-install -o "${PI_USER}" -g "${PI_USER}" -m 0755 "${SOURCE_DIR}/firmware.py" "${APP_DIR}/firmware.py"
-install -o "${PI_USER}" -g "${PI_USER}" -m 0755 "${SOURCE_DIR}/watchdog.py" "${APP_DIR}/watchdog.py"
-install -o "${PI_USER}" -g "${PI_USER}" -m 0644 "${SOURCE_DIR}/requirements.txt" "${APP_DIR}/requirements.txt"
-install -o "${PI_USER}" -g "${PI_USER}" -m 0644 "${SOURCE_DIR}/config.example.json" "${APP_DIR}/config.example.json"
+copy_if_needed() {
+  local src="$1"
+  local dst="$2"
+  local mode="$3"
+  if [[ -f "${dst}" ]] && cmp -s "${src}" "${dst}"; then
+    return 0
+  fi
+  install -o "${PI_USER}" -g "${PI_USER}" -m "${mode}" "${src}" "${dst}"
+}
+
+copy_if_needed "${SOURCE_DIR}/firmware.py" "${APP_DIR}/firmware.py" 0755
+copy_if_needed "${SOURCE_DIR}/watchdog.py" "${APP_DIR}/watchdog.py" 0755
+copy_if_needed "${SOURCE_DIR}/requirements.txt" "${APP_DIR}/requirements.txt" 0644
+copy_if_needed "${SOURCE_DIR}/config.example.json" "${APP_DIR}/config.example.json" 0644
 
 if [[ ! -f "${APP_DIR}/config.json" ]]; then
   cat > "${APP_DIR}/config.json" <<EOF

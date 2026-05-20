@@ -206,7 +206,7 @@ def ref(path: str):
     return db.reference(path)
 
 
-def heartbeat(printer_id: str, firmware_version: int, local_ip: str, current_job_id: Optional[str], raw_status: Optional[str]) -> None:
+def heartbeat(printer_id: str, firmware_version: str, local_ip: str, current_job_id: Optional[str], raw_status: Optional[str]) -> None:
     ref(f"printerHealth/{printer_id}").update({
         "online": True,
         "lastSeenAt": int(time.time() * 1000),
@@ -272,6 +272,7 @@ def main() -> None:
     current_job_id: Optional[str] = None
     printer_status_raw: Optional[str] = transport.get_hs()
     last_heartbeat = 0
+    current_firmware_version = str(cfg.get("firmwareVersion") or "")
 
     while True:
         try:
@@ -279,7 +280,7 @@ def main() -> None:
                 printer_status_raw = transport.get_hs()
 
             if int(time.time()) - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
-                heartbeat(printer_id, int(cfg.get("firmwareVersion") or 0), local_ip, current_job_id, printer_status_raw)
+                heartbeat(printer_id, current_firmware_version, local_ip, current_job_id, printer_status_raw)
                 last_heartbeat = int(time.time())
 
             claim = claim_next_job(printer_id)
@@ -301,16 +302,19 @@ def main() -> None:
                 printer_status_raw = transport.get_hs()
                 if parse_hs_status(printer_status_raw) != PrinterDeviceStatus.OK:
                     mark_job_status(printer_id, job_id, "FAILED", f"PRE_HS_FAILED status={parse_hs_status(printer_status_raw)}")
+                    logging.error("Failed to print tag %s - PRE_HS_FAILED status=%s", job.get("tagId") or job_id, parse_hs_status(printer_status_raw))
                     current_job_id = None
                     time.sleep(POLL_INTERVAL_SECONDS)
                     continue
 
+            logging.info("Printing tag %s", job.get("tagId") or job_id)
             mark_job_status(printer_id, job_id, "PRINTING")
             try:
                 transport.send_zpl(zpl_body)
                 mark_job_status(printer_id, job_id, "DONE")
             except Exception as exc:
                 logging.exception("Print failed for job=%s: %s", job_id, exc)
+                logging.error("Failed to print tag %s - %s", job.get("tagId") or job_id, exc)
                 mark_job_status(printer_id, job_id, "FAILED", str(exc))
             finally:
                 current_job_id = None
