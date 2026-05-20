@@ -17,32 +17,37 @@ if (!admin.apps.length) {
 }
 
 const body = fs.readFileSync(firmwarePath, "utf8");
-const checksum = crypto.createHash("sha256").update(body).digest("hex");
 
 async function main() {
   const version = crypto.createHash("sha256").update(body).digest("hex");
-  await admin.database().ref("firmware/latest").set({
-    version,
-    body,
-    updatedAt: Date.now(),
-    sourcePath: path.basename(firmwarePath),
-  });
+  try {
+    await admin.database().ref("firmware/latest").set({
+      version,
+      body,
+      updatedAt: Date.now(),
+      sourcePath: path.basename(firmwarePath),
+    });
 
-  console.log(
-    JSON.stringify(
-      {
-        projectId,
-        databaseURL,
-        firmwarePath,
-        version,
-      },
-      null,
-      2
-    )
-  );
+    console.log(
+      JSON.stringify(
+        {
+          projectId,
+          databaseURL,
+          firmwarePath,
+          version,
+        },
+        null,
+        2
+      )
+    );
+  } finally {
+    await admin.app().delete();
+  }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
