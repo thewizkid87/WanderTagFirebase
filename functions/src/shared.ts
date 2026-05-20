@@ -51,8 +51,6 @@ export interface EventRecord extends BaseRecord {
 
 export interface PrinterRecord extends BaseRecord {
   uuid: string;
-  status: PrinterStatus;
-  firmwareVersion: number;
   apiKey?: string;
   eventId?: string | null;
   location?: string | null;
@@ -116,6 +114,7 @@ export interface PrinterHealthRecord extends BaseRecord {
 
 export interface PrinterQueueJob extends BaseRecord {
   tagId: string;
+  publicCode?: string | null;
   status: PrintJobStatus;
   createdAt: number;
   claimedAt?: number | null;

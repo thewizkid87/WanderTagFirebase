@@ -612,16 +612,9 @@ async function registerPrinter(req: Request, res: Response): Promise<void> {
 
   const payload: Partial<PrinterRecord> = {
     uuid,
-    firmwareVersion,
     apiKey,
     updatedAt: FieldValue.serverTimestamp() as never,
   };
-  if (!existing) {
-    Object.assign(payload, {
-      status: "OFFLINE" as const,
-      createdAt: FieldValue.serverTimestamp() as never,
-    });
-  }
 
   if (existing) {
     await firestore.collection("printers").doc(printerId).set(payload, { merge: true });
@@ -709,6 +702,7 @@ async function enqueuePrintJob(tagId: string, tag: TagRecord): Promise<void> {
 
   const queueJob: PrinterQueueJob = {
     tagId,
+    publicCode: tag.publicCode,
     status: "QUEUED",
     createdAt: nowMs(),
     claimedAt: null,
@@ -845,10 +839,6 @@ export const checkPrinterStatus = onSchedule("every 5 minutes", async () => {
       updates.push(rtdb.ref(`printerHealth/${printerId}`).update({
         online: false,
       }));
-      updates.push(firestore.collection("printers").doc(printerId).set({
-        status: "OFFLINE",
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true }));
     }
   }
 

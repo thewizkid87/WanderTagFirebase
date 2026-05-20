@@ -290,6 +290,7 @@ def main() -> None:
 
             job_id, job = claim
             current_job_id = job_id
+            public_code = job.get("publicCode") or job.get("tagId") or job_id
             zpl_body = job.get("zpl")
             if not isinstance(zpl_body, str) or not zpl_body.strip():
                 mark_job_status(printer_id, job_id, "FAILED", "Missing zpl")
@@ -302,19 +303,19 @@ def main() -> None:
                 printer_status_raw = transport.get_hs()
                 if parse_hs_status(printer_status_raw) != PrinterDeviceStatus.OK:
                     mark_job_status(printer_id, job_id, "FAILED", f"PRE_HS_FAILED status={parse_hs_status(printer_status_raw)}")
-                    logging.error("Failed to print tag %s - PRE_HS_FAILED status=%s", job.get("tagId") or job_id, parse_hs_status(printer_status_raw))
+                    logging.error("Failed to print tag %s - PRE_HS_FAILED status=%s", public_code, parse_hs_status(printer_status_raw))
                     current_job_id = None
                     time.sleep(POLL_INTERVAL_SECONDS)
                     continue
 
-            logging.info("Printing tag %s", job.get("tagId") or job_id)
+            logging.info("Printing tag %s", public_code)
             mark_job_status(printer_id, job_id, "PRINTING")
             try:
                 transport.send_zpl(zpl_body)
                 mark_job_status(printer_id, job_id, "DONE")
             except Exception as exc:
                 logging.exception("Print failed for job=%s: %s", job_id, exc)
-                logging.error("Failed to print tag %s - %s", job.get("tagId") or job_id, exc)
+                logging.error("Failed to print tag %s - %s", public_code, exc)
                 mark_job_status(printer_id, job_id, "FAILED", str(exc))
             finally:
                 current_job_id = None
